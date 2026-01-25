@@ -1,0 +1,16 @@
+[package]
+name = "genetic_regression"
+version = "0.1.0"
+edition = "2024"
+description = "Nonlinear regresson by genetic algorithm"
+license = "MIT"
+repository = "https://github.com/lamrongol/genetic_regression"
+
+
+[dependencies]
+smartcore = "0.4.9"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+csv = "1.4.0"
+rayon = "1.11.0"
+rand = "0.9.2"
