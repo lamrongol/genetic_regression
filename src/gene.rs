@@ -16,10 +16,10 @@ pub(crate) enum Gene {
     Exp(f64),
     ExpMinus(f64),
     Inverse,
-    //-------------
     //Following accept only plus, above genes also accept minus and count is `ACCEPT_MINUS_GENE_CNT`
+    Inverse1plus(f64),
     Sqrt,
-    Log,
+    Log,//This may result INFINITY
     Log1plus(f64),
 }
 impl Gene {
@@ -36,6 +36,7 @@ impl Gene {
             Gene::Exp(_s) => 2,
             Gene::ExpMinus(_s) => 2,
             Gene::Inverse => 1,
+            Gene::Inverse1plus(_s) => 2,
             Gene::Sqrt => 1,
             Gene::Log => 1,
             Gene::Log1plus(_s) => 2,
@@ -47,7 +48,7 @@ impl Gene {
             Gene::Unused | Gene::Linear | Gene::Squared | Gene::Cubed | Gene::Inverse  => false,
                 Gene::Exp(_s) | Gene::ExpMinus(_s) => false,
             Gene::Sqrt | Gene::Log  => true,
-             Gene::Log1plus(_s) => true,
+             Gene::Log1plus(_s) | Gene::Inverse1plus(_s) => true,
         }
     }
 
@@ -60,11 +61,33 @@ impl Gene {
             Gene::Exp(s) => Some((s * x).exp()),
             Gene::ExpMinus(s) => Some((-s * x).exp()),
             Gene::Inverse => Some(1.0 / x),
+            Gene::Inverse1plus(s) => Some(1.0 / (1.0+s*x)),
             Gene::Sqrt => Some(x.sqrt()),
             Gene::Log => Some(x.ln()),
             Gene::Log1plus(s) => Some((1.0 + s * x).ln()),
         }
     }
+    //Avoid Infinity
+    // pub(crate) fn calc_suppressing_outlier(&self, x: f64) -> f64 {
+    //     let val = match self {
+    //         Gene::Unused => 0.0,
+    //         Gene::Linear => x,
+    //         Gene::Squared => x.powi(2),
+    //         Gene::Cubed => x.powi(3),
+    //         Gene::Exp(s) => (s * x).exp(),
+    //         Gene::ExpMinus(s) => (-s * x).exp(),
+    //         Gene::Inverse => 1.0 / x,
+    //         Gene::Inverse1plus(s) => 1.0 / (1.0+s*x),
+    //         Gene::Sqrt => x.sqrt(),
+    //         Gene::Log => x.ln(),
+    //         Gene::Log1plus(s) => (1.0 + s * x).ln(),
+    //     };
+    //     if val.is_infinite() {
+    //         f32::MAX as f64
+    //     }else{
+    //         val
+    //     }
+    // }
 
     pub(crate) fn get_scale_factor(&self) -> Option<f64> {
         if self.dim() < 2 {
@@ -73,7 +96,8 @@ impl Gene {
             match self {
                 Gene::Exp(scale_factor)
                 | Gene::ExpMinus(scale_factor)
-                | Gene::Log1plus(scale_factor) => Some(*scale_factor),
+                | Gene::Log1plus(scale_factor)
+                | Gene::Inverse1plus(scale_factor)=> Some(*scale_factor),
                 _ => {
                     panic!("Code for {} is not written", self.name());
                 }
@@ -88,7 +112,8 @@ impl Gene {
             2 => match self {
                 Gene::Exp(scale_factor)
                 | Gene::ExpMinus(scale_factor)
-                | Gene::Log1plus(scale_factor) => {
+                | Gene::Log1plus(scale_factor)
+                | Gene::Inverse1plus(scale_factor)=> {
                     format!("{}\t{}", self.name(), scale_factor)
                 }
                 _ => {
@@ -113,6 +138,7 @@ impl Gene {
                 Gene::Exp(_s) => Gene::Exp(scale_factor),
                 Gene::ExpMinus(_s) => Gene::ExpMinus(scale_factor),
                 Gene::Log1plus(_s) => Gene::Log1plus(scale_factor),
+                Gene::Inverse1plus(_s)=> Gene::Inverse1plus(scale_factor),
                 _ => {
                     panic!("Code for {} is not written", gene.name());
                 }
@@ -135,6 +161,7 @@ impl Gene {
             Gene::Exp(_s) => (Gene::Exp(average), Gene::Exp(another)),
             Gene::ExpMinus(_s) => (Gene::ExpMinus(average), Gene::ExpMinus(another)),
             Gene::Log1plus(_s) => (Gene::Log1plus(average), Gene::Log1plus(another)),
+            Gene::Inverse1plus(_s) => (Gene::Inverse1plus(average), Gene::Inverse1plus(another)),
             _ => {
                 panic!("Code for {} is not written", self.name())
             },
@@ -146,6 +173,7 @@ impl Gene {
             "Exp" => Gene::Exp(scale.unwrap()),
             "ExpMinus" => Gene::ExpMinus(scale.unwrap()),
             "Log1plus" => Gene::Log1plus(scale.unwrap()),
+            "Inverse1plus" => Gene::Inverse1plus(scale.unwrap()),
             _ => Gene::from_str(string).unwrap_or_else(|_| panic!("Code for {} is not written", string)),
         }
     }
@@ -161,6 +189,7 @@ impl Clone for Gene {
             Gene::Exp(s) => Gene::Exp(*s),
             Gene::ExpMinus(s) => Gene::ExpMinus(*s),
             Gene::Inverse => Gene::Inverse,
+            Gene::Inverse1plus(s) => Gene::Inverse1plus(*s),
             Gene::Sqrt => Gene::Sqrt,
             Gene::Log => Gene::Log,
             Gene::Log1plus(s) => Gene::Log1plus(*s),
