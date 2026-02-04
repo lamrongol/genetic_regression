@@ -152,23 +152,25 @@ pub fn fit(
         }
     });
     individuals.retain(|i| i.is_fitted);
-    if individuals.len() < setting.individual_num {
-        dbg!(individuals.len());
-    }
 
-    let mut pre_best_evaluation = match setting.evaluation {
-        Evaluation::StepwiseAic => {
-            individuals
-                .sort_unstable_by(|a, b| a.aic.unwrap().partial_cmp(&b.aic.unwrap()).unwrap());
-            individuals[0].aic
-        }
-        Evaluation::StepwiseBic => {
-            individuals
-                .sort_unstable_by(|a, b| a.bic.unwrap().partial_cmp(&b.bic.unwrap()).unwrap());
-            individuals[0].bic
-        }
-    }
-    .unwrap();
+
+    let mut pre_best_evaluation = if individuals.len() < setting.individual_num {
+        dbg!(individuals.len());
+        f64::INFINITY
+    }else {
+        match setting.evaluation {
+            Evaluation::StepwiseAic => {
+                individuals
+                    .sort_unstable_by(|a, b| a.aic.unwrap().partial_cmp(&b.aic.unwrap()).unwrap());
+                individuals[0].aic
+            }
+            Evaluation::StepwiseBic => {
+                individuals
+                    .sort_unstable_by(|a, b| a.bic.unwrap().partial_cmp(&b.bic.unwrap()).unwrap());
+                individuals[0].bic
+            }
+        }.unwrap()
+    };
 
     let mut generation_idx = 0;
     let best: Individual;
@@ -250,7 +252,7 @@ pub fn fit(
         }
         .unwrap();
 
-        let improvement_rate = 1.0 - best_eval / pre_best_evaluation;
+        let improvement_rate = (1.0 - best_eval / pre_best_evaluation).abs();
         // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
         dbg!(improvement_rate);
         if improvement_rate < setting.stop_diff_rate {
@@ -286,6 +288,7 @@ fn calc_evaluation(
             let col: &mut Vec<f64> = vertical_parameter_list.get_mut(idx).unwrap();
             col.iter_mut().for_each(|v| *v = gene.calc(*v).unwrap());
             if col.iter().any(|x| !is_usual(*x)) {
+                // println!("{}, {}",idx, gene.name());
                 return Err(String::from("includes unusual number(NaN or Infinity)"));
             }
             x.push(col.to_owned());
