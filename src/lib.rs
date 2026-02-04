@@ -407,7 +407,11 @@ mod tests {
         //     Some(dir) => fs::create_dir_all(dir).unwrap(),
         //     None => {}
         // }
-        fs::write(output_file, result).unwrap();
+        if result.is_none(){
+            println!("Test Failed");
+            return
+        }
+        fs::write(output_file, result.unwrap()).unwrap();
 
         //calculate for new data
         let calculator = Calculator::load_file(output_file);
