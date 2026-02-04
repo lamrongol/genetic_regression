@@ -69,7 +69,7 @@ pub fn fit(
     csv_reader_builder: csv::ReaderBuilder,
     is_plus_vec: Option<Vec<bool>>,
     genetic_setting: Option<AlgorithmSetting>,
-) -> String{
+) -> Option<String>{
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
 
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
@@ -104,6 +104,10 @@ pub fn fit(
     };
 
     let data_count = count_data_num(input_file);
+    if data_count<100{
+        println!("data count is too small: {}, no result", data_count);
+        return None;
+    }
     let data_num = if data_count > setting.max_data_num {
         setting.max_data_num
     } else {
@@ -257,7 +261,7 @@ pub fn fit(
     best = individuals[0].clone();
 
     println!("Finished!");
-    best.format(param_names)
+    Some(best.format(param_names))
 }
 
 fn count_data_num(path: &str) -> usize {
