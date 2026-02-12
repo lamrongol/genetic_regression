@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 result.tsv
 sample_data.tsv
 .idea/

@@ -51,9 +51,10 @@ pub struct Calculator {
 }
 
 impl Calculator {
-    pub fn load_file(tsv_file: &str) -> Calculator {
+    pub fn load_file(tsv_file: &str) -> Result<Calculator, &str> {
         let individual = Individual::load(&tsv_file);
-        Calculator { individual }
+        if individual.is_err() {return Err(individual.err().unwrap());}
+        Ok(Calculator { individual: individual.unwrap() })
     }
 
     pub fn calc(&self, params: &Vec<f64>) -> f64 {
@@ -414,7 +415,7 @@ mod tests {
         fs::write(output_file, result.unwrap()).unwrap();
 
         //calculate for new data
-        let calculator = Calculator::load_file(output_file);
+        let calculator = Calculator::load_file(output_file).unwrap();
         let result = calculator.calc(&vec![2000.0, 10000.0, 0.06, -18.0, 30000.0, 0.00075]);
         let expected = function(2000.0, 10000.0, 0.06, -18.0, 30000.0, 0.00075);
 
@@ -422,6 +423,6 @@ mod tests {
     }
 
     fn function(x0: f64, _x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> f64 {
-        x0 + (72.0 * x2).exp() + x3.powi(2) + x4.sqrt() + 1.0 / x5
+        2.0*x0 + (72.0 * x2).exp() + x3.powi(2) + 3.0*x4.sqrt() + 1.0 / x5
     }
 }

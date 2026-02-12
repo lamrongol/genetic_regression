@@ -2,14 +2,14 @@
 ## English
 This is nonlinear regression by genetic algorithm, for example:
 
-y = x0 + exp(72.0 * x2) + x3^2 + √x4 + 1.0/x5 (x1 is not used)
+y = 2.0*x0 + exp(72.0 * x2) + x3^2 + 3.0*√x4 + 1.0/x5 (x1 is not used)
 
 This program chooses which variables are used or not, and function form(e.g. sqrt, log, and so on) by genetic algorithm using BIC(or AIC) as fitness. 
 
 ## Japanese
 非線形回帰を遺伝的アルゴリズムで行なうプログラムです。例えば以下のような関数があったとします。
 
-y = x0 + exp(72.0 * x2) + x3^2 + √x4 + 1.0/x5 (x1は使われない)
+y = 2.0*x0 + exp(72.0 * x2) + x3^2 + 3.0*√x4 + 1.0/x5 (x1 is not used)
 
 どの変数を使うか、また関数形(平方根やlogなど)を、BIC(またはAIC)を「適応度」とした遺伝的アルゴリズムによって選択します。
 

@@ -1,3 +1,4 @@
+use std::error::Error;
 use rand::{Rng, rng};
 use std::fmt::Display;
 use std::slice::Iter;
@@ -63,11 +64,10 @@ impl Individual {
         let mut v = self.intercept.unwrap();
         for (i, param) in params.iter().enumerate() {
             let gene = &self.gene_list[i];
-            v += if *gene != Gene::Unused {
-                gene.calc(*param).unwrap()
-            } else {
-                0.0
-            };
+            if *gene == Gene::Unused{
+                continue
+            }
+            v += self.coe_list[i].unwrap() * gene.calc(*param).unwrap();
         }
         v
     }
@@ -131,13 +131,16 @@ impl Individual {
             s
         }
     }
-    pub(crate) fn load(tsv_file: &str) -> Self {
+    pub(crate) fn load(tsv_file: &str) -> Result<Self, &str> {
         let mut tsv_reader = csv::ReaderBuilder::new()
             .flexible(true)
             .delimiter(b'\t')
             .from_path(tsv_file)
             .unwrap();
         let first = tsv_reader.records().nth(0).unwrap().unwrap();
+        if first[0].to_string()!="[Intercept]"{
+            return Err("File format error".into())
+        }
         let intercept = Some(first[1].parse::<f64>().unwrap());
         let mut gene_list = vec![];
         let mut coe_list = vec![];
@@ -160,7 +163,7 @@ impl Individual {
             let gene = Gene::load_from_str(&line[2], scale);
             gene_list.push(gene);
         }
-        Individual {
+        Ok(Individual {
             gene_num: gene_list.len(),
             gene_list,
             coe_list,
@@ -168,7 +171,7 @@ impl Individual {
             aic: None,
             bic: None,
             is_fitted: true
-        }
+        })
     }
 }
 impl Clone for Individual {

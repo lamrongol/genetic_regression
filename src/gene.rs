@@ -67,7 +67,7 @@ impl Gene {
             Gene::Log1plus(s) => Some((1.0 + s * x).ln()),
         }
     }
-    //Avoid Infinity
+    //Avoid Infinity//TODO?
     // pub(crate) fn calc_suppressing_outlier(&self, x: f64) -> f64 {
     //     let val = match self {
     //         Gene::Unused => 0.0,
