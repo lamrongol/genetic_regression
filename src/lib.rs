@@ -26,8 +26,8 @@ pub struct AlgorithmSetting {
     pub individual_num: usize,
     pub top_selection_num: usize,
     pub mutation_rate: f64,
-    // pub min_loop_cnt: usize,
-    // pub max_loop_cnt: usize,
+    pub min_loop_cnt: usize,
+    pub max_loop_cnt: usize,
     pub stop_diff_rate: f64,
     pub max_data_num: usize,
 }
@@ -39,8 +39,8 @@ impl AlgorithmSetting {
             individual_num: 500,
             top_selection_num: 5,
             mutation_rate: 0.30,
-            // min_loop_cnt: 3,
-            // max_loop_cnt: 1000,
+            min_loop_cnt: 3,
+            max_loop_cnt: 30,
             stop_diff_rate: 0.000001,
             max_data_num: 50000,
         }
@@ -253,11 +253,15 @@ pub fn fit(
         }
         .unwrap();
 
-        let improvement_rate = (1.0 - best_eval / pre_best_evaluation).abs();
+        let improvement_rate = dbg!(1.0 - best_eval / pre_best_evaluation).abs();
         // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
-        dbg!(improvement_rate);
         if improvement_rate < setting.stop_diff_rate {
             break;
+        }
+        if generation_idx<setting.min_loop_cnt{
+            continue
+        }else if generation_idx>setting.max_loop_cnt{
+            break
         }
         pre_best_evaluation = best_eval;
     }

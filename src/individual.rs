@@ -1,4 +1,3 @@
-use std::error::Error;
 use rand::{Rng, rng};
 use std::fmt::Display;
 use std::slice::Iter;
