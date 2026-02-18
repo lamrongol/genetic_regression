@@ -30,11 +30,15 @@ fn it_works() {
         //This means using default genetic algorithm setting
         None,
     );
+    if result.is_none(){
+        println!("Test Failed");
+        return
+    }
     let output_file = "result.tsv";
-    fs::write(output_file, result).unwrap();
+    fs::write(output_file, result.unwrap()).unwrap();
     
     //Use regression result
-    let calculator = Calculator::load_file(output_file);
+    let calculator = Calculator::load_file(output_file).unwrap();
 
     //calculate for new value like following
     let param_vec = &vec![2000.0, 10000.0, 0.06, -18.0, 30000.0, 0.00075];
