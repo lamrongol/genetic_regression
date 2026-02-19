@@ -84,8 +84,17 @@ pub fn fit(
     if csv_reader.has_headers() {
         let headers = csv_reader.headers().unwrap();
         let mut list = vec![];
-        for name in headers.iter().skip(1) {
+        let mut is_first = true;
+        for (i, name) in headers.iter().enumerate() {
             if setting.ignore_variables.contains(name) {
+                ignore_column_idxes.insert(i);
+                continue
+            }
+            if is_first {
+                target_idx = i;
+                is_first = false;
+                continue
+            }
             list.push(name);
         }
         param_num = list.len();
