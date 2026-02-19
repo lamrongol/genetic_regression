@@ -30,6 +30,7 @@ pub struct AlgorithmSetting {
     pub max_loop_cnt: usize,
     pub stop_diff_rate: f64,
     pub max_data_num: usize,
+    pub ignore_variables: HashSet<String>,
 }
 
 impl AlgorithmSetting {
@@ -43,6 +44,7 @@ impl AlgorithmSetting {
             max_loop_cnt: 30,
             stop_diff_rate: 0.000001,
             max_data_num: 50000,
+            ignore_variables: HashSet::new(),
         }
     }
 }
@@ -54,7 +56,7 @@ impl Calculator {
     pub fn load_file(tsv_file: &str) -> Result<Calculator, &str> {
         let individual = Individual::load(&tsv_file);
         if individual.is_err() {return Err(individual.err().unwrap());}
-        Ok(Calculator { individual: individual.unwrap() })
+        Ok(Calculator { individual: individual? })
     }
 
     pub fn calc(&self, params: &Vec<f64>) -> f64 {
@@ -77,10 +79,13 @@ pub fn fit(
 
     let param_names ;
     let param_num;
+    let mut ignore_column_idxes = HashSet::new();
+    let mut target_idx = 0;
     if csv_reader.has_headers() {
         let headers = csv_reader.headers().unwrap();
         let mut list = vec![];
         for name in headers.iter().skip(1) {
+            if setting.ignore_variables.contains(name) {
             list.push(name);
         }
         param_num = list.len();
@@ -123,10 +128,16 @@ pub fn fit(
 
     for result in csv_reader.records().skip(data_count - data_num) {
         let record = result.unwrap();
-        target_list.push(record[0].parse::<f64>().unwrap());
-        for (i, rec) in record.iter().skip(1).enumerate() {
+        target_list.push(record[target_idx].parse::<f64>().unwrap());
+
+        let mut idx = 0;
+        for (i, rec) in record.iter().enumerate() {
+            if i==target_idx || ignore_column_idxes.contains(&i){
+                continue
+            }
             let param = rec.parse::<f64>().unwrap();
-            vertical_parameter_list[i].push(param);
+            vertical_parameter_list[idx].push(param);
+            idx+=1;
         }
     }
 
@@ -153,13 +164,11 @@ pub fn fit(
         }
     });
     individuals.retain(|i| i.is_fitted);
-
-
-    let mut pre_best_evaluation = if individuals.len() < setting.individual_num {
+    if individuals.len() < setting.individual_num {
         dbg!(individuals.len());
-        f64::INFINITY
-    }else {
-        match setting.evaluation {
+    }
+
+    let mut pre_best_evaluation = match setting.evaluation {
             Evaluation::StepwiseAic => {
                 individuals
                     .sort_unstable_by(|a, b| a.aic.unwrap().partial_cmp(&b.aic.unwrap()).unwrap());
@@ -253,10 +262,21 @@ pub fn fit(
         }
         .unwrap();
 
-        let improvement_rate = dbg!(1.0 - best_eval / pre_best_evaluation).abs();
-        // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
-        if improvement_rate < setting.stop_diff_rate {
-            break;
+        if best_eval==0.0 || pre_best_evaluation==0.0{
+            println!("Continue loop because evaluation metrics is zero: {} {}", best_eval, pre_best_evaluation);
+        }else if best_eval<0.0 && pre_best_evaluation>0.0{
+            println!("Continue loop because evaluation metrics sign is different: {} {}", best_eval, pre_best_evaluation);
+        } else {
+            let improvement_rate = if best_eval> 0.0 &&pre_best_evaluation>0.0{
+                1.0 - best_eval / pre_best_evaluation
+            }else  {
+                1.0 -pre_best_evaluation/ best_eval
+            };
+            dbg!(improvement_rate);
+            // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
+            if improvement_rate < setting.stop_diff_rate {
+                break;
+            }
         }
         if generation_idx<setting.min_loop_cnt{
             continue
