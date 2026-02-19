@@ -1,7 +1,7 @@
-use rand::{Rng, rng};
+use crate::gene::Gene;
+use rand::{RngExt, rng};
 use std::fmt::Display;
 use std::slice::Iter;
-use crate::gene::Gene;
 
 pub(crate) struct Individual {
     gene_num: usize,
@@ -13,7 +13,6 @@ pub(crate) struct Individual {
     pub(crate) aic: Option<f64>,
     pub(crate) bic: Option<f64>,
     // pub(crate) r2: Option<f64>,
-
     pub(crate) is_fitted: bool,
 }
 
@@ -22,7 +21,7 @@ impl Individual {
         &self,
         partner: Individual,
         scale_list: &Vec<f64>,
-        is_plus_list: &Vec<bool>,
+        non_negative_list: &Vec<bool>,
     ) -> (Self, Self) {
         let gene_num = self.gene_num;
         let start_idx = rng().random_range(0..gene_num);
@@ -54,8 +53,8 @@ impl Individual {
         }
         if !changed {
             //Mutation
-            child1.gene_list[i] = Gene::get_random_gene(scale_list[i], is_plus_list[i]);
-            child2.gene_list[i] = Gene::get_random_gene(scale_list[i], is_plus_list[i]);
+            child1.gene_list[i] = Gene::get_random_gene(scale_list[i], non_negative_list[i]);
+            child2.gene_list[i] = Gene::get_random_gene(scale_list[i], non_negative_list[i]);
         }
         (child1, child2)
     }
@@ -63,8 +62,8 @@ impl Individual {
         let mut v = self.intercept.unwrap();
         for (i, param) in params.iter().enumerate() {
             let gene = &self.gene_list[i];
-            if *gene == Gene::Unused{
-                continue
+            if *gene == Gene::Unused {
+                continue;
             }
             v += self.coe_list[i].unwrap() * gene.calc(*param).unwrap();
         }
@@ -76,11 +75,11 @@ impl Individual {
     pub(crate) fn set_gene(&mut self, idx: usize, gene: Gene) {
         self.gene_list[idx] = gene;
     }
-    pub(crate) fn new(scale_list: &Vec<f64>, is_plus_list: &Vec<bool>) -> Self {
+    pub(crate) fn new(scale_list: &Vec<f64>, non_negative_list: &Vec<bool>) -> Self {
         let gene_num = scale_list.len();
         let mut gene_list = vec![];
         for i in 0..scale_list.len() {
-            gene_list.push(Gene::get_random_gene(scale_list[i], is_plus_list[i]));
+            gene_list.push(Gene::get_random_gene(scale_list[i], non_negative_list[i]));
         }
         Individual {
             gene_num,
@@ -108,17 +107,13 @@ impl Individual {
             for i in 0..self.gene_num {
                 let gene = &self.gene_list[i];
                 let line = if gene.dim() == 0 {
-                   format!("\t{}\n", gene.to_string())
+                    format!("\t{}\n", gene.to_string())
                 } else {
-                    format!(
-                        "{}\t{}\n",
-                        coe_list[i].unwrap(),
-                        gene.to_string()
-                    )
+                    format!("{}\t{}\n", coe_list[i].unwrap(), gene.to_string())
                 };
                 match param_names {
                     Some(ref param_names) => s.push_str(&format!("{}\t{}", param_names[i], line)),
-                    None => {s.push_str(line.as_str())}
+                    None => s.push_str(line.as_str()),
                 }
             }
             if self.aic.is_some() {
@@ -137,8 +132,8 @@ impl Individual {
             .from_path(tsv_file)
             .unwrap();
         let first = tsv_reader.records().nth(0).unwrap().unwrap();
-        if first[0].to_string()!="[Intercept]"{
-            return Err("File format error".into())
+        if first[0].to_string() != "[Intercept]" {
+            return Err("File format error".into());
         }
         let intercept = Some(first[1].parse::<f64>().unwrap());
         let mut gene_list = vec![];
@@ -169,7 +164,7 @@ impl Individual {
             intercept,
             aic: None,
             bic: None,
-            is_fitted: true
+            is_fitted: true,
         })
     }
 }

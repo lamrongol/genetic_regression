@@ -3,7 +3,7 @@ mod individual;
 
 use crate::gene::Gene;
 use crate::individual::Individual;
-use rand::{Rng, rng};
+use rand::{RngExt, rng};
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::iter::ParallelIterator;
 use smartcore::linalg::basic::arrays::Array2;
@@ -11,6 +11,7 @@ use smartcore::linalg::basic::matrix::DenseMatrix;
 use smartcore::linear::linear_regression::{
     LinearRegression, LinearRegressionParameters, LinearRegressionSolverName,
 };
+use std::collections::HashSet;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -55,8 +56,12 @@ pub struct Calculator {
 impl Calculator {
     pub fn load_file(tsv_file: &str) -> Result<Calculator, &str> {
         let individual = Individual::load(&tsv_file);
-        if individual.is_err() {return Err(individual.err().unwrap());}
-        Ok(Calculator { individual: individual? })
+        if individual.is_err() {
+            return Err(individual.err().unwrap());
+        }
+        Ok(Calculator {
+            individual: individual?,
+        })
     }
 
     pub fn calc(&self, params: &Vec<f64>) -> f64 {
@@ -64,20 +69,20 @@ impl Calculator {
     }
 }
 
-/// if `is_plus_vec` is `None`, only minus acceptable function form is used(such as x^2), log and sqrt are not used.
-/// For `Some(is_plus_vec)`, length can be 1, if all parameters' `is_plus` are same(e.g. `[true]` is automatically converted to `&vec![true; param_num]`)
+/// if `non_negative_vec` is `None`, only minus acceptable function form is used(such as x^2), log and sqrt are not used.
+/// For `Some(non_negative_vec)`, length can be 1, if all parameters' `non_negative` are same(e.g. `[true]` is automatically converted to `&vec![true; param_num]`)
 ///` genetic_setting` can be `None` if you are not interested in genetic algorithm
 pub fn fit(
     input_file: &str,
     csv_reader_builder: csv::ReaderBuilder,
-    is_plus_vec: Option<Vec<bool>>,
+    non_negative_vec: Option<Vec<bool>>,
     genetic_setting: Option<AlgorithmSetting>,
-) -> Option<String>{
+) -> Option<String> {
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
 
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
 
-    let param_names ;
+    let param_names;
     let param_num;
     let mut ignore_column_idxes = HashSet::new();
     let mut target_idx = 0;
@@ -88,12 +93,12 @@ pub fn fit(
         for (i, name) in headers.iter().enumerate() {
             if setting.ignore_variables.contains(name) {
                 ignore_column_idxes.insert(i);
-                continue
+                continue;
             }
             if is_first {
                 target_idx = i;
                 is_first = false;
-                continue
+                continue;
             }
             list.push(name);
         }
@@ -106,8 +111,8 @@ pub fn fit(
     }
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
 
-    let is_plus_list= match is_plus_vec {
-        None => { &vec![false; param_num]}
+    let non_negative_list = match non_negative_vec {
+        None => &vec![false; param_num],
         Some(vec) => {
             if vec.len() == 1 {
                 let default = vec[0];
@@ -119,7 +124,7 @@ pub fn fit(
     };
 
     let data_count = count_data_num(input_file);
-    if data_count<100{
+    if data_count < 100 {
         println!("data count is too small: {}, no result", data_count);
         return None;
     }
@@ -141,12 +146,12 @@ pub fn fit(
 
         let mut idx = 0;
         for (i, rec) in record.iter().enumerate() {
-            if i==target_idx || ignore_column_idxes.contains(&i){
-                continue
+            if i == target_idx || ignore_column_idxes.contains(&i) {
+                continue;
             }
             let param = rec.parse::<f64>().unwrap();
             vertical_parameter_list[idx].push(param);
-            idx+=1;
+            idx += 1;
         }
     }
 
@@ -159,7 +164,7 @@ pub fn fit(
 
     let mut individuals = vec![];
     for _i in 0..setting.individual_num {
-        let individual = Individual::new(&scale_list, is_plus_list);
+        let individual = Individual::new(&scale_list, non_negative_list);
         individuals.push(individual);
     }
     individuals.par_iter_mut().for_each(|mut individual| {
@@ -178,18 +183,18 @@ pub fn fit(
     }
 
     let mut pre_best_evaluation = match setting.evaluation {
-            Evaluation::StepwiseAic => {
-                individuals
-                    .sort_unstable_by(|a, b| a.aic.unwrap().partial_cmp(&b.aic.unwrap()).unwrap());
-                individuals[0].aic
-            }
-            Evaluation::StepwiseBic => {
-                individuals
-                    .sort_unstable_by(|a, b| a.bic.unwrap().partial_cmp(&b.bic.unwrap()).unwrap());
-                individuals[0].bic
-            }
-        }.unwrap()
-    };
+        Evaluation::StepwiseAic => {
+            individuals
+                .sort_unstable_by(|a, b| a.aic.unwrap().partial_cmp(&b.aic.unwrap()).unwrap());
+            individuals[0].aic
+        }
+        Evaluation::StepwiseBic => {
+            individuals
+                .sort_unstable_by(|a, b| a.bic.unwrap().partial_cmp(&b.bic.unwrap()).unwrap());
+            individuals[0].bic
+        }
+    }
+    .unwrap();
 
     let mut generation_idx = 0;
     let best: Individual;
@@ -220,7 +225,7 @@ pub fn fit(
             let (child1, child2) = next_individuals[mother_idx].cross(
                 next_individuals[father_idx].clone(),
                 &scale_list,
-                &is_plus_list,
+                &non_negative_list,
             );
             next_individuals.push(child1);
             if next_individuals.len() < setting.individual_num {
@@ -228,7 +233,7 @@ pub fn fit(
             }
         }
         while next_individuals.len() < setting.individual_num {
-            next_individuals.push(Individual::new(&scale_list, is_plus_list));
+            next_individuals.push(Individual::new(&scale_list, non_negative_list));
         }
 
         //mutation
@@ -237,8 +242,10 @@ pub fn fit(
             .for_each(|i| {
                 if rand::random_range(0.0..1.0) < setting.mutation_rate {
                     let mutation_idx = rand::random_range(0..param_num);
-                    let gene =
-                        Gene::get_random_gene(scale_list[mutation_idx], is_plus_list[mutation_idx]);
+                    let gene = Gene::get_random_gene(
+                        scale_list[mutation_idx],
+                        non_negative_list[mutation_idx],
+                    );
                     i.set_gene(mutation_idx, gene);
                 }
             });
@@ -271,15 +278,21 @@ pub fn fit(
         }
         .unwrap();
 
-        if best_eval==0.0 || pre_best_evaluation==0.0{
-            println!("Continue loop because evaluation metrics is zero: {} {}", best_eval, pre_best_evaluation);
-        }else if best_eval<0.0 && pre_best_evaluation>0.0{
-            println!("Continue loop because evaluation metrics sign is different: {} {}", best_eval, pre_best_evaluation);
+        if best_eval == 0.0 || pre_best_evaluation == 0.0 {
+            println!(
+                "Continue loop because evaluation metrics is zero: {} {}",
+                best_eval, pre_best_evaluation
+            );
+        } else if best_eval < 0.0 && pre_best_evaluation > 0.0 {
+            println!(
+                "Continue loop because evaluation metrics sign is different: {} {}",
+                best_eval, pre_best_evaluation
+            );
         } else {
-            let improvement_rate = if best_eval> 0.0 &&pre_best_evaluation>0.0{
+            let improvement_rate = if best_eval > 0.0 && pre_best_evaluation > 0.0 {
                 1.0 - best_eval / pre_best_evaluation
-            }else  {
-                1.0 -pre_best_evaluation/ best_eval
+            } else {
+                1.0 - pre_best_evaluation / best_eval
             };
             dbg!(improvement_rate);
             // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
@@ -287,10 +300,10 @@ pub fn fit(
                 break;
             }
         }
-        if generation_idx<setting.min_loop_cnt{
-            continue
-        }else if generation_idx>setting.max_loop_cnt{
-            break
+        if generation_idx < setting.min_loop_cnt {
+            continue;
+        } else if generation_idx > setting.max_loop_cnt {
+            break;
         }
         pre_best_evaluation = best_eval;
     }
@@ -384,9 +397,9 @@ fn is_usual(x: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use crate::{Calculator, fit};
-    use rand::{Rng, rng};
+    use rand::{RngExt, rng};
+    use std::fs;
 
     #[test]
     fn it_works() {
@@ -407,7 +420,7 @@ mod tests {
             let x2: f64 = rng().random_range(0.01..0.15);
             let x3: f64 = rng().random_range(-62.0..62.0);
             let x4: f64 = rng().random_range(1000.0..80001000.0);
-            let x5 = rng().random_range(1.0..10.0) / 8000.0;
+            let x5 = rng().random_range(0.0..50.0);
             let noise = rng().random_range(-0.50..0.50) * 1000.0;
 
             let y = function(x0, x1, x2, x3, x4, x5) + noise;
@@ -441,9 +454,9 @@ mod tests {
         //     Some(dir) => fs::create_dir_all(dir).unwrap(),
         //     None => {}
         // }
-        if result.is_none(){
+        if result.is_none() {
             println!("Test Failed");
-            return
+            return;
         }
         fs::write(output_file, result.unwrap()).unwrap();
 
@@ -456,6 +469,6 @@ mod tests {
     }
 
     fn function(x0: f64, _x1: f64, x2: f64, x3: f64, x4: f64, x5: f64) -> f64 {
-        2.0*x0 + (72.0 * x2).exp() + x3.powi(2) + 3.0*x4.sqrt() + 1.0 / x5
+        2.0 * x0 + (72.0 * x2).exp() + x3.powi(2) + 3.0 * x4.sqrt() + 5000.0 * (-0.5 * x5).exp()
     }
 }
