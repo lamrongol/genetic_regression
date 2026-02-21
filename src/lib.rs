@@ -103,11 +103,11 @@ pub fn fit(
             list.push(name);
         }
         param_num = list.len();
-        param_names = Some(list);
+        param_names = list;
     } else {
         let first = csv_reader.records().nth(0).unwrap();
         param_num = first.iter().skip(1).count();
-        param_names = None;
+        param_names = vec![];
     }
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
 
@@ -155,10 +155,12 @@ pub fn fit(
         }
     }
 
+    let mut median_list = Vec::<f64>::with_capacity(param_num);
     let mut scale_list = Vec::<f64>::with_capacity(param_num);
     for mut v in vertical_parameter_list.to_owned() {
         let (_, median, _) =
             v.select_nth_unstable_by(data_num / 2, |a, b| a.abs().partial_cmp(&b.abs()).unwrap());
+        median_list.push(median.to_owned());
         scale_list.push(1.0 / *median);
     }
 
@@ -279,10 +281,15 @@ pub fn fit(
         .unwrap();
 
         if best_eval == 0.0 || pre_best_evaluation == 0.0 {
-            println!(
-                "Continue loop because evaluation metrics is zero: {} {}",
-                best_eval, pre_best_evaluation
-            );
+            if best_eval == 0.0 || pre_best_evaluation == 0.0 {
+                // println!("Break because evaluation metrics doesn't change");
+                break;
+            } else {
+                println!(
+                    "Continue loop because evaluation metrics is zero: {} {}",
+                    best_eval, pre_best_evaluation
+                );
+            }
         } else if best_eval < 0.0 && pre_best_evaluation > 0.0 {
             println!(
                 "Continue loop because evaluation metrics sign is different: {} {}",
@@ -310,7 +317,7 @@ pub fn fit(
     best = individuals[0].clone();
 
     println!("Finished!");
-    Some(best.format(param_names))
+    Some(best.format(&param_names, &median_list))
 }
 
 fn count_data_num(path: &str) -> usize {

@@ -1,7 +1,7 @@
 use crate::gene::Gene;
 use rand::{RngExt, rng};
-use std::fmt::Display;
 use std::slice::Iter;
+use std::str::FromStr;
 
 pub(crate) struct Individual {
     gene_num: usize,
@@ -41,7 +41,7 @@ impl Individual {
                 child2.gene_list[i] = self.gene_list[i].clone() //if (isPlus == null || isPlus(i) || GeneManager.allowMinus(this.genes(i)))
             } else {
                 let gene = &child1.gene_list[i];
-                if gene.dim() == 2 {
+                if gene.dim() == 2 && gene.name().starts_with("Exp"){
                     changed = true;
                     let (gene1, gene2) = gene.cross_different_scale(child2.gene_list[i].clone());
 
@@ -91,7 +91,7 @@ impl Individual {
             is_fitted: false,
         }
     }
-    pub(crate) fn format(&self, param_names: Option<Vec<&str>>) -> String {
+    pub(crate) fn format(&self, param_names: &Vec<&str>, median_list: &Vec<f64>) -> String {
         if !self.is_fitted {
             let mut s = String::new();
             for i in 0..self.gene_num {
@@ -100,21 +100,24 @@ impl Individual {
             }
             s
         } else {
-            let mut s = String::from("#name\tCoefficient\tFunction\tScaling Factor(if exists)\n");
+            let mut s = String::from("#name\tCoefficient\tFunction\tScaling Factor(if exists)\tValue when median \n");
             s.push_str(&format!("[Intercept]\t{}\n", self.intercept.unwrap()));
             let coe_list = &self.coe_list;
 
             for i in 0..self.gene_num {
                 let gene = &self.gene_list[i];
                 let line = if gene.dim() == 0 {
-                    format!("\t{}\n", gene.to_string())
+                    format!("\t{}", gene.to_string())
                 } else {
-                    format!("{}\t{}\n", coe_list[i].unwrap(), gene.to_string())
+                    format!("{}\t{}", coe_list[i].unwrap(), gene.to_string())
                 };
-                match param_names {
-                    Some(ref param_names) => s.push_str(&format!("{}\t{}", param_names[i], line)),
-                    None => s.push_str(line.as_str()),
-                }
+                let tmp = gene.calc( median_list[i]);
+                let median_val =  if tmp.is_some(){
+                    (coe_list[i].unwrap() * tmp.unwrap()).to_string()
+                }else{
+                    "".to_string()
+                };
+                s.push_str(&format!("{}\t{}\t{}\n", param_names[i], line, median_val));
             }
             if self.aic.is_some() {
                 s.push_str(&format!("#AIC={}\n", self.aic.unwrap()));
@@ -149,7 +152,7 @@ impl Individual {
                 Err(_) => None,
             };
             coe_list.push(coe);
-            let scale: Option<f64> = if line.len() == 4 && !line[3].is_empty() {
+            let scale: Option<f64> = if Gene::from_str(&line[2]).unwrap().dim()==2 {
                 Some(line[3].parse::<f64>().unwrap())
             } else {
                 None
@@ -179,10 +182,5 @@ impl Clone for Individual {
             bic: self.bic,
             is_fitted: self.is_fitted,
         }
-    }
-}
-impl Display for Individual {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.format(None))
     }
 }

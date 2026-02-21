@@ -126,6 +126,14 @@ impl Gene {
         };
         let gene = Gene::from_repr(rng().random_range(0..minus_idx)).unwrap();
         if gene.dim() == 2 {
+            if scale_factor < 1.0 {
+                match gene {
+                    Gene::Log1plus(_s) => return Gene::Log1plus(1.0),
+                    Gene::Inverse1plus(_s) => return Gene::Inverse1plus(1.0),
+                    _ => {}
+                }
+            }
+
             if rand::rng().random_bool(0.5) {
                 scale_factor *= rand::rng().random_range(0.1..1.0);
             } else {
@@ -145,6 +153,7 @@ impl Gene {
             gene
         }
     }
+
     pub(crate) fn cross_different_scale(&self, partner: Gene) -> (Self, Self) {
         let s1 = self.get_scale_factor().unwrap();
         let s2 = partner.get_scale_factor().unwrap();
