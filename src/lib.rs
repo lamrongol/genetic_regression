@@ -133,7 +133,7 @@ pub fn fit(
         data_count
     };
 
-    let mut target_list = vec![];
+    let mut target_list = Vec::with_capacity(data_num);
     let mut vertical_parameter_list = Vec::<Vec<f64>>::with_capacity(param_num);
     for _i in 0..param_num {
         vertical_parameter_list.push(vec![]);
