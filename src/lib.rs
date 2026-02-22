@@ -77,7 +77,7 @@ pub fn fit(
     csv_reader_builder: csv::ReaderBuilder,
     non_negative_vec: Option<Vec<bool>>,
     genetic_setting: Option<AlgorithmSetting>,
-) -> Option<String> {
+) -> Result<String, String> {
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
 
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
@@ -86,29 +86,26 @@ pub fn fit(
     let param_num;
     let mut ignore_column_idxes = HashSet::new();
     let mut target_idx = 0;
-    if csv_reader.has_headers() {
-        let headers = csv_reader.headers().unwrap();
-        let mut list = vec![];
-        let mut is_first = true;
-        for (i, name) in headers.iter().enumerate() {
-            if setting.ignore_variables.contains(name) {
-                ignore_column_idxes.insert(i);
-                continue;
-            }
-            if is_first {
-                target_idx = i;
-                is_first = false;
-                continue;
-            }
-            list.push(name);
-        }
-        param_num = list.len();
-        param_names = list;
-    } else {
-        let first = csv_reader.records().nth(0).unwrap();
-        param_num = first.iter().skip(1).count();
-        param_names = vec![];
+    if !csv_reader.has_headers() {
+        return Err("csv file does not contain headers".to_string());
     }
+    let headers = csv_reader.headers().unwrap();
+    let mut list = vec![];
+    let mut is_first = true;
+    for (i, name) in headers.iter().enumerate() {
+        if setting.ignore_variables.contains(name) {
+            ignore_column_idxes.insert(i);
+            continue;
+        }
+        if is_first {
+            target_idx = i;
+            is_first = false;
+            continue;
+        }
+        list.push(name);
+    }
+    param_num = list.len();
+    param_names = list;
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
 
     let non_negative_list = match non_negative_vec {
@@ -125,8 +122,10 @@ pub fn fit(
 
     let data_count = count_data_num(input_file);
     if data_count < 100 {
-        println!("data count is too small: {}, no result", data_count);
-        return None;
+        return Err(format!(
+            "data count is too small: {}, no result",
+            data_count
+        ));
     }
     let data_num = if data_count > setting.max_data_num {
         setting.max_data_num
@@ -317,7 +316,7 @@ pub fn fit(
     best = individuals[0].clone();
 
     println!("Finished!");
-    Some(best.format(&param_names, &median_list))
+    Ok(best.format(&param_names, &median_list))
 }
 
 fn count_data_num(path: &str) -> usize {
@@ -461,7 +460,7 @@ mod tests {
         //     Some(dir) => fs::create_dir_all(dir).unwrap(),
         //     None => {}
         // }
-        if result.is_none() {
+        if result.is_err() {
             println!("Test Failed");
             return;
         }
