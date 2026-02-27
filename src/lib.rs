@@ -76,7 +76,7 @@ impl Calculator {
 /// For `Some(non_negative_vec)`, length can be 1, if all parameters' `non_negative` are same(e.g. `[true]` is automatically converted to `&vec![true; param_num]`)
 ///` genetic_setting` can be `None` if you are not interested in genetic algorithm
 pub fn fit(
-    dataset: &Dataset,
+    dataset: &PlainDataset,
     original_data_info: &OriginalDataInfo,
     genetic_setting: Option<AlgorithmSetting>,
 ) -> Result<String, String> {
@@ -247,7 +247,7 @@ pub fn fit(
 
 fn calc_evaluation(
     individual: &mut Individual,
-    dataset: &Dataset,
+    dataset: &PlainDataset,
     original_data_info: &OriginalDataInfo,
 ) -> Result<Individual, String> {
     let param_num = original_data_info.param_cnt();
@@ -332,14 +332,15 @@ fn is_usual(x: f64) -> bool {
     !(x.is_nan() || x.is_infinite() || x.is_subnormal())
 }
 
+//To avoid name collision, "Plain" is added to name head
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DataItem {
+pub struct PlainDataItem {
     pub target: f64,
     pub params: Vec<f64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Dataset {
-    vec: Vec<DataItem>,
+pub struct PlainDataset {
+    vec: Vec<PlainDataItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,7 +363,7 @@ impl OriginalDataInfo {
     }
 }
 
-impl Dataset {
+impl PlainDataset {
     pub fn data_cnt(&self) -> usize {
         self.vec.len()
     }
@@ -374,16 +375,16 @@ impl Dataset {
             .partial_shuffle(&mut rand::rng(), min(test_size, data_cnt / 100));
         let (train, validation) = left.split_at(((left.len() as f64) * train_rate) as usize);
         (
-            Dataset {
+            PlainDataset {
                 vec: train.to_vec(),
             },
-            Dataset {
+            PlainDataset {
                 vec: validation.to_vec(),
             },
-            Dataset { vec: test.to_vec() },
+            PlainDataset { vec: test.to_vec() },
         )
     }
-    pub fn iter(&self) -> Iter<'_, DataItem> {
+    pub fn iter(&self) -> Iter<'_, PlainDataItem> {
         self.vec.iter()
     }
 
@@ -420,7 +421,7 @@ pub fn load_dataset(
     input_file: &str,
     csv_reader_builder: csv::ReaderBuilder,
     setting: Option<DataLoadSetting>,
-) -> Result<(Dataset, OriginalDataInfo), String> {
+) -> Result<(PlainDataset, OriginalDataInfo), String> {
     let setting = setting.unwrap_or_else(|| DataLoadSetting::default());
 
     let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
@@ -529,14 +530,14 @@ pub fn load_dataset(
                 params.push(val);
             }
         }
-        vec.push(DataItem {
+        vec.push(PlainDataItem {
             target: target_list[i],
             params,
         });
     }
 
     Ok((
-        Dataset { vec },
+        PlainDataset { vec },
         OriginalDataInfo {
             min_list,
             max_list,
