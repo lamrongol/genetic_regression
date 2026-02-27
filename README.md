@@ -28,21 +28,16 @@ fn it_works() {
     const SAMPLE_FILE: &str = "sample_data.tsv";
     let mut reader_builder = csv::ReaderBuilder::new();
     reader_builder.delimiter(b'\t');
+    //You can reuse dataset for another purpose
+    let (dataset, data_info) = load_dataset(SAMPLE_FILE, reader_builder, None).unwrap();
 
-    let result = fit(
-        SAMPLE_FILE,
-        reader_builder,
-        //express which variables are always plus
-        Some(vec![true, true, true, false, true, true]),
-        //This means using default genetic algorithm setting
-        None,
-    );
+    let result = fit(&dataset, &data_info, None);
     if result.is_none() {
         println!("Test Failed");
         return;
     }
     let output_file = "result.tsv";
-    fs::write(output_file, result.unwrap()).unwrap();
+    Calculator::save_file(output_file, result.unwrap());
 
     //Use regression result
     let calculator = Calculator::load_file(output_file).unwrap();

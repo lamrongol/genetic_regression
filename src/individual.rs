@@ -1,6 +1,5 @@
 use crate::gene::Gene;
 use rand::{RngExt, rng};
-use std::slice::Iter;
 use std::str::FromStr;
 
 pub(crate) struct Individual {
@@ -41,7 +40,7 @@ impl Individual {
                 child2.gene_list[i] = self.gene_list[i].clone() //if (isPlus == null || isPlus(i) || GeneManager.allowMinus(this.genes(i)))
             } else {
                 let gene = &child1.gene_list[i];
-                if gene.dim() == 2 && gene.name().starts_with("Exp"){
+                if gene.dim() == 2 && gene.name().starts_with("Exp") {
                     changed = true;
                     let (gene1, gene2) = gene.cross_different_scale(child2.gene_list[i].clone());
 
@@ -69,8 +68,8 @@ impl Individual {
         }
         v
     }
-    pub(crate) fn gene_iter(&self) -> Iter<'_, Gene> {
-        self.gene_list.iter()
+    pub(crate) fn gene_list(&self) -> &Vec<Gene> {
+        &self.gene_list
     }
     pub(crate) fn set_gene(&mut self, idx: usize, gene: Gene) {
         self.gene_list[idx] = gene;
@@ -91,7 +90,7 @@ impl Individual {
             is_fitted: false,
         }
     }
-    pub(crate) fn format(&self, param_names: &Vec<&str>, median_list: &Vec<f64>) -> String {
+    pub(crate) fn format(&self, param_names: &Vec<String>, median_list: &Vec<f64>) -> String {
         if !self.is_fitted {
             let mut s = String::new();
             for i in 0..self.gene_num {
@@ -100,7 +99,9 @@ impl Individual {
             }
             s
         } else {
-            let mut s = String::from("#name\tCoefficient\tFunction\tScaling Factor(if exists)\tValue when median \n");
+            let mut s = String::from(
+                "#name\tCoefficient\tFunction\tScaling Factor(if exists)\tExample(value when variable equals median) \n",
+            );
             s.push_str(&format!("[Intercept]\t{}\n", self.intercept.unwrap()));
             let coe_list = &self.coe_list;
 
@@ -111,10 +112,10 @@ impl Individual {
                 } else {
                     format!("{}\t{}", coe_list[i].unwrap(), gene.to_string())
                 };
-                let tmp = gene.calc( median_list[i]);
-                let median_val =  if tmp.is_some(){
+                let tmp = gene.calc(median_list[i]);
+                let median_val = if tmp.is_some() {
                     (coe_list[i].unwrap() * tmp.unwrap()).to_string()
-                }else{
+                } else {
                     "".to_string()
                 };
                 s.push_str(&format!("{}\t{}\t{}\n", param_names[i], line, median_val));
@@ -152,7 +153,7 @@ impl Individual {
                 Err(_) => None,
             };
             coe_list.push(coe);
-            let scale: Option<f64> = if Gene::from_str(&line[2]).unwrap().dim()==2 {
+            let scale: Option<f64> = if Gene::from_str(&line[2]).unwrap().dim() == 2 {
                 Some(line[3].parse::<f64>().unwrap())
             } else {
                 None

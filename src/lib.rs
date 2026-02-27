@@ -3,18 +3,22 @@ mod individual;
 
 use crate::gene::Gene;
 use crate::individual::Individual;
+use ndarray::Array1;
+use rand::prelude::SliceRandom;
 use rand::{RngExt, rng};
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::iter::ParallelIterator;
-use smartcore::linalg::basic::arrays::Array2;
+use serde::{Deserialize, Serialize};
 use smartcore::linalg::basic::matrix::DenseMatrix;
 use smartcore::linear::linear_regression::{
     LinearRegression, LinearRegressionParameters, LinearRegressionSolverName,
 };
+use std::cmp::min;
 use std::collections::HashSet;
-
+use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::slice::Iter;
 
 pub enum Evaluation {
     StepwiseAic,
@@ -30,8 +34,6 @@ pub struct AlgorithmSetting {
     pub min_loop_cnt: usize,
     pub max_loop_cnt: usize,
     pub stop_diff_rate: f64,
-    pub max_data_num: usize,
-    pub ignore_variables: HashSet<String>,
 }
 
 impl AlgorithmSetting {
@@ -44,8 +46,6 @@ impl AlgorithmSetting {
             min_loop_cnt: 3,
             max_loop_cnt: 30,
             stop_diff_rate: 0.000001,
-            max_data_num: 50000,
-            ignore_variables: HashSet::new(),
         }
     }
 }
@@ -63,6 +63,9 @@ impl Calculator {
             individual: individual?,
         })
     }
+    pub fn save_file(output_file: &str, fitting_result: String) {
+        fs::write(output_file, fitting_result).unwrap();
+    }
 
     pub fn calc(&self, params: &Vec<f64>) -> f64 {
         self.individual.calc(params)
@@ -73,107 +76,31 @@ impl Calculator {
 /// For `Some(non_negative_vec)`, length can be 1, if all parameters' `non_negative` are same(e.g. `[true]` is automatically converted to `&vec![true; param_num]`)
 ///` genetic_setting` can be `None` if you are not interested in genetic algorithm
 pub fn fit(
-    input_file: &str,
-    csv_reader_builder: csv::ReaderBuilder,
-    non_negative_vec: Option<Vec<bool>>,
+    dataset: &Dataset,
+    original_data_info: &OriginalDataInfo,
     genetic_setting: Option<AlgorithmSetting>,
 ) -> Result<String, String> {
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
 
-    let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
+    let non_negative_list = original_data_info
+        .min_list
+        .iter()
+        .map(|min| *min >= 0.0)
+        .collect::<Vec<_>>();
 
-    let param_names;
-    let param_num;
-    let mut ignore_column_idxes = HashSet::new();
-    let mut target_idx = 0;
-    if !csv_reader.has_headers() {
-        return Err("csv file does not contain headers".to_string());
-    }
-    let headers = csv_reader.headers().unwrap();
-    let mut list = vec![];
-    let mut is_first = true;
-    for (i, name) in headers.iter().enumerate() {
-        if setting.ignore_variables.contains(name) {
-            ignore_column_idxes.insert(i);
-            continue;
-        }
-        if is_first {
-            target_idx = i;
-            is_first = false;
-            continue;
-        }
-        list.push(name);
-    }
-    param_num = list.len();
-    param_names = list;
-    let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
-
-    let non_negative_list = match non_negative_vec {
-        None => &vec![false; param_num],
-        Some(vec) => {
-            if vec.len() == 1 {
-                let default = vec[0];
-                &vec![default; param_num]
-            } else {
-                &vec.clone()
-            }
-        }
-    };
-
-    let data_count = count_data_num(input_file);
-    if data_count < 100 {
-        return Err(format!(
-            "data count is too small: {}, no result",
-            data_count
-        ));
-    }
-    let data_num = if data_count > setting.max_data_num {
-        setting.max_data_num
-    } else {
-        data_count
-    };
-
-    let mut target_list = Vec::with_capacity(data_num);
-    let mut vertical_parameter_list = Vec::<Vec<f64>>::with_capacity(param_num);
-    for _i in 0..param_num {
-        vertical_parameter_list.push(vec![]);
-    }
-
-    for result in csv_reader.records().skip(data_count - data_num) {
-        let record = result.unwrap();
-        target_list.push(record[target_idx].parse::<f64>().unwrap());
-
-        let mut idx = 0;
-        for (i, rec) in record.iter().enumerate() {
-            if i == target_idx || ignore_column_idxes.contains(&i) {
-                continue;
-            }
-            let param = rec.parse::<f64>().unwrap();
-            vertical_parameter_list[idx].push(param);
-            idx += 1;
-        }
-    }
-
-    let mut median_list = Vec::<f64>::with_capacity(param_num);
-    let mut scale_list = Vec::<f64>::with_capacity(param_num);
-    for mut v in vertical_parameter_list.to_owned() {
-        let (_, median, _) =
-            v.select_nth_unstable_by(data_num / 2, |a, b| a.abs().partial_cmp(&b.abs()).unwrap());
-        median_list.push(median.to_owned());
-        scale_list.push(1.0 / *median);
-    }
+    let scale_list = original_data_info
+        .median_list
+        .iter()
+        .map(|median| if *median == 0.0 { 1.0 } else { 1.0 / median })
+        .collect::<Vec<_>>();
 
     let mut individuals = vec![];
     for _i in 0..setting.individual_num {
-        let individual = Individual::new(&scale_list, non_negative_list);
+        let individual = Individual::new(&scale_list, &non_negative_list);
         individuals.push(individual);
     }
     individuals.par_iter_mut().for_each(|mut individual| {
-        let result = calc_evaluation(
-            &mut individual,
-            &target_list,
-            vertical_parameter_list.to_owned(),
-        );
+        let result = calc_evaluation(&mut individual, &dataset, &original_data_info);
         if result.is_ok() {
             *individual = result.unwrap()
         }
@@ -234,7 +161,7 @@ pub fn fit(
             }
         }
         while next_individuals.len() < setting.individual_num {
-            next_individuals.push(Individual::new(&scale_list, non_negative_list));
+            next_individuals.push(Individual::new(&scale_list, &non_negative_list));
         }
 
         //mutation
@@ -242,7 +169,7 @@ pub fn fit(
             .par_iter_mut()
             .for_each(|i| {
                 if rand::random_range(0.0..1.0) < setting.mutation_rate {
-                    let mutation_idx = rand::random_range(0..param_num);
+                    let mutation_idx = rand::random_range(0..original_data_info.param_cnt());
                     let gene = Gene::get_random_gene(
                         scale_list[mutation_idx],
                         non_negative_list[mutation_idx],
@@ -253,11 +180,7 @@ pub fn fit(
 
         individuals = next_individuals;
         individuals.par_iter_mut().for_each(|mut individual| {
-            let result = calc_evaluation(
-                &mut individual,
-                &target_list,
-                vertical_parameter_list.to_owned(),
-            );
+            let result = calc_evaluation(&mut individual, &dataset, &original_data_info);
             if result.is_ok() {
                 *individual = result.unwrap();
             }
@@ -316,38 +239,46 @@ pub fn fit(
     best = individuals[0].clone();
 
     println!("Finished!");
-    Ok(best.format(&param_names, &median_list))
-}
-
-fn count_data_num(path: &str) -> usize {
-    let file = File::open(path).unwrap();
-    let br = BufReader::new(file);
-    br.lines().count() - 1 //minus header line
+    Ok(best.format(
+        &original_data_info.param_names,
+        &original_data_info.median_list,
+    ))
 }
 
 fn calc_evaluation(
     individual: &mut Individual,
-    target_list: &Vec<f64>,
-    mut vertical_parameter_list: Vec<Vec<f64>>,
+    dataset: &Dataset,
+    original_data_info: &OriginalDataInfo,
 ) -> Result<Individual, String> {
-    let param_num = vertical_parameter_list.len();
-    let mut x: Vec<Vec<f64>> = vec![];
+    let param_num = original_data_info.param_cnt();
+
     let mut idx_rel_list = vec![];
     let mut dim_sum = 0;
-    let gene_iter = individual.gene_iter();
-    for (idx, gene) in gene_iter.enumerate() {
+    for (idx, gene) in individual.gene_list().iter().enumerate() {
         if *gene != Gene::Unused {
             idx_rel_list.push(idx);
-            let col: &mut Vec<f64> = vertical_parameter_list.get_mut(idx).unwrap();
-            col.iter_mut().for_each(|v| *v = gene.calc(*v).unwrap());
-            if col.iter().any(|x| !is_usual(*x)) {
-                // println!("{}, {}",idx, gene.name());
-                return Err(String::from("includes unusual number(NaN or Infinity)"));
-            }
-            x.push(col.to_owned());
             dim_sum += gene.dim();
         }
     }
+
+    let mut x_matrix: Vec<Vec<f64>> = Vec::with_capacity(dataset.data_cnt());
+    let mut target_list: Vec<f64> = Vec::with_capacity(dataset.data_cnt());
+    for data_item in dataset.iter() {
+        target_list.push(data_item.target);
+        let mut vec = vec![];
+        for (idx, gene) in individual.gene_list().iter().enumerate() {
+            if *gene != Gene::Unused {
+                let val = gene.calc(data_item.params[idx]).unwrap();
+                if !is_usual(val) {
+                    // println!("{}, {}",idx, gene.name());
+                    return Err(String::from("includes unusual number(NaN or Infinity)"));
+                }
+                vec.push(val);
+            }
+        }
+        x_matrix.push(vec);
+    }
+
     //All gene is `Unused`
     if idx_rel_list.len() == 0 {
         individual.aic = Some(f64::MAX);
@@ -355,10 +286,10 @@ fn calc_evaluation(
         return Ok(individual.clone());
     }
 
-    let matrix = DenseMatrix::from_2d_vec(&x).unwrap().transpose();
+    let matrix = DenseMatrix::from_2d_vec(&x_matrix).unwrap();
     let lr_result = LinearRegression::fit(
         &matrix,
-        target_list,
+        &target_list,
         LinearRegressionParameters::default().with_solver(LinearRegressionSolverName::QR),
     );
 
@@ -401,11 +332,232 @@ fn is_usual(x: f64) -> bool {
     !(x.is_nan() || x.is_infinite() || x.is_subnormal())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataItem {
+    pub target: f64,
+    pub params: Vec<f64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Dataset {
+    vec: Vec<DataItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OriginalDataInfo {
+    pub min_list: Vec<f64>,
+    pub max_list: Vec<f64>,
+    pub median_list: Vec<f64>,
+    pub target_min: f64,
+    pub target_max: f64,
+
+    pub param_names: Vec<String>,
+}
+
+impl OriginalDataInfo {
+    pub fn param_cnt(&self) -> usize {
+        self.param_names.len()
+    }
+    pub fn restore_target(&self, normalized_target: f64) -> f64 {
+        normalized_target * (self.target_max - self.target_min) + self.target_min
+    }
+}
+
+impl Dataset {
+    pub fn data_cnt(&self) -> usize {
+        self.vec.len()
+    }
+
+    pub fn split(&mut self, train_rate: f64, test_size: usize) -> (Self, Self, Self) {
+        let data_cnt = self.data_cnt();
+        let (test, left) = self
+            .vec
+            .partial_shuffle(&mut rand::rng(), min(test_size, data_cnt / 100));
+        let (train, validation) = left.split_at(((left.len() as f64) * train_rate) as usize);
+        (
+            Dataset {
+                vec: train.to_vec(),
+            },
+            Dataset {
+                vec: validation.to_vec(),
+            },
+            Dataset { vec: test.to_vec() },
+        )
+    }
+    pub fn iter(&self) -> Iter<'_, DataItem> {
+        self.vec.iter()
+    }
+
+    pub fn to_ndarray(&self, data_info: &OriginalDataInfo) -> (ndarray::Array2<f64>, Array1<f64>) {
+        let mut x = vec![];
+        let mut y = vec![];
+        for item in self.vec.iter() {
+            y.push(item.target);
+            x.append(&mut item.params.to_owned());
+        }
+        let x =
+            ndarray::Array2::from_shape_vec((self.data_cnt(), data_info.param_cnt()), x).unwrap();
+        (x, Array1::from(y))
+    }
+}
+
+pub struct DataLoadSetting {
+    pub max_data_num: usize,
+    pub normalize: bool,
+    pub ignore_variables: HashSet<String>,
+}
+
+impl DataLoadSetting {
+    pub fn default() -> Self {
+        DataLoadSetting {
+            max_data_num: 500_000,
+            normalize: false,
+            ignore_variables: HashSet::new(),
+        }
+    }
+}
+
+pub fn load_dataset(
+    input_file: &str,
+    csv_reader_builder: csv::ReaderBuilder,
+    setting: Option<DataLoadSetting>,
+) -> Result<(Dataset, OriginalDataInfo), String> {
+    let setting = setting.unwrap_or_else(|| DataLoadSetting::default());
+
+    let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
+    let mut ignore_column_idxes = HashSet::new();
+    let mut target_idx = 0;
+    if !csv_reader.has_headers() {
+        return Err("csv file does not contain headers".to_string());
+    }
+
+    let headers = csv_reader.headers().unwrap();
+    let mut param_names = vec![];
+    let mut is_first = true;
+    for (i, name) in headers.iter().enumerate() {
+        if setting.ignore_variables.contains(name) {
+            ignore_column_idxes.insert(i);
+            continue;
+        }
+        if is_first {
+            target_idx = i;
+            is_first = false;
+            continue;
+        }
+        param_names.push(name.to_string());
+    }
+    let param_cnt = param_names.len();
+    let mut min_list = vec![f64::INFINITY; param_cnt];
+    let mut max_list = vec![f64::NEG_INFINITY; param_cnt];
+    let all_data_count = count_data_num(input_file);
+    if all_data_count < 1000 {
+        return Err(format!(
+            "data count is too small: {}, no result",
+            all_data_count
+        ));
+    }
+    let data_cnt = if all_data_count > setting.max_data_num {
+        setting.max_data_num
+    } else {
+        all_data_count
+    };
+    if data_cnt < 1000 {
+        eprintln!("data count is too small: {}, no result", data_cnt);
+    }
+
+    let mut target_min = f64::INFINITY;
+    let mut target_max = f64::NEG_INFINITY;
+    let mut target_list = Vec::with_capacity(data_cnt);
+    let mut median_list = Vec::with_capacity(data_cnt);
+    let mut vertical_parameter_list = vec![Vec::with_capacity(data_cnt); param_cnt];
+
+    let mut csv_reader = csv_reader_builder.from_path(input_file).unwrap();
+    for result in csv_reader.records().skip(all_data_count - data_cnt) {
+        let record = result.unwrap();
+        let target = record.get(target_idx).unwrap().parse::<f64>().unwrap();
+        if target < target_min {
+            target_min = target;
+        }
+        if target > target_max {
+            target_max = target;
+        }
+        target_list.push(target);
+
+        let mut idx = 0;
+        for (i, rec) in record.iter().enumerate() {
+            if i == target_idx || ignore_column_idxes.contains(&i) {
+                continue;
+            }
+            let param = rec.parse::<f64>().unwrap();
+            if param < min_list[idx] {
+                min_list[idx] = param;
+            }
+            if param > max_list[idx] {
+                max_list[idx] = param;
+            }
+            vertical_parameter_list[idx].push(param);
+
+            idx += 1;
+        }
+    }
+
+    let data_num = if data_cnt > setting.max_data_num {
+        setting.max_data_num
+    } else {
+        data_cnt
+    };
+
+    for mut v in vertical_parameter_list.to_owned() {
+        let (_, median, _) =
+            v.select_nth_unstable_by(data_num / 2, |a, b| a.abs().partial_cmp(&b.abs()).unwrap());
+        median_list.push(median.to_owned());
+    }
+
+    if setting.normalize {
+        target_list
+            .iter_mut()
+            .for_each(|x| *x = (*x - target_min) / (target_max - target_min));
+    }
+
+    let mut vec = Vec::with_capacity(data_cnt);
+    for i in 0..data_cnt {
+        let mut params = Vec::with_capacity(param_cnt);
+        for j in 0..param_cnt {
+            let val = vertical_parameter_list[j][i];
+            if setting.normalize {
+                params.push((val - min_list[j]) / (max_list[j] - min_list[j]));
+            } else {
+                params.push(val);
+            }
+        }
+        vec.push(DataItem {
+            target: target_list[i],
+            params,
+        });
+    }
+
+    Ok((
+        Dataset { vec },
+        OriginalDataInfo {
+            min_list,
+            max_list,
+            median_list,
+            target_min,
+            target_max,
+            param_names,
+        },
+    ))
+}
+
+fn count_data_num(path: &str) -> usize {
+    let file = File::open(path).unwrap();
+    let br = BufReader::new(file);
+    br.lines().count() - 1 //minus header line
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{Calculator, fit};
+    use crate::{Calculator, fit, load_dataset};
     use rand::{RngExt, rng};
-    use std::fs;
 
     #[test]
     fn it_works() {
@@ -446,13 +598,9 @@ mod tests {
 
         let mut reader_builder = csv::ReaderBuilder::new();
         reader_builder.delimiter(b'\t');
+        let (dataset, data_info) = load_dataset(SAMPLE_FILE, reader_builder, None).unwrap();
 
-        let result = fit(
-            SAMPLE_FILE,
-            reader_builder,
-            Some(vec![true, true, true, false, true, true]),
-            None,
-        );
+        let result = fit(&dataset, &data_info, None);
 
         let output_file = "result.tsv";
         // let output_path = Path::new(output_file);
@@ -464,7 +612,7 @@ mod tests {
             println!("Test Failed");
             return;
         }
-        fs::write(output_file, result.unwrap()).unwrap();
+        Calculator::save_file(output_file, result.unwrap());
 
         //calculate for new data
         let calculator = Calculator::load_file(output_file).unwrap();
