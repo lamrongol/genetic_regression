@@ -18,7 +18,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::slice::Iter;
 
 pub enum Evaluation {
     StepwiseAic,
