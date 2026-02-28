@@ -367,7 +367,7 @@ impl OriginalDataInfo {
     pub fn restore_target(&self, normalized_target: f64) -> f64 {
         self.target_min + normalized_target * (self.target_max - self.target_min)
     }
-    pub fn restore_params(&self, normalized_params: Vec<f64>) -> Vec<f64> {
+    pub fn restore_params(&self, normalized_params: &Vec<f64>) -> Vec<f64> {
         let mut vec = Vec::with_capacity(self.param_cnt());
         for (idx, param) in normalized_params.iter().enumerate() {
             vec.push(self.min_list[idx] + param * (self.max_list[idx] - self.min_list[idx]))
@@ -377,7 +377,7 @@ impl OriginalDataInfo {
     pub fn normalize_target(&self, target: f64) -> f64 {
         (target - self.target_min) / (self.target_max - self.target_min)
     }
-    pub fn normalize_params(&self, params: Vec<f64>) -> Vec<f64> {
+    pub fn normalize_params(&self, params: &Vec<f64>) -> Vec<f64> {
         let mut vec = Vec::with_capacity(self.param_cnt());
         for (idx, param) in params.iter().enumerate() {
             vec.push((param - self.min_list[idx]) / (self.max_list[idx] - self.min_list[idx]))
@@ -473,6 +473,9 @@ pub fn load_dataset(
     let mut min_list = vec![f64::INFINITY; param_cnt];
     let mut max_list = vec![f64::NEG_INFINITY; param_cnt];
     let all_data_count = count_data_num(input_file);
+    if all_data_count == 0 {
+        return Err("no data found".to_string());
+    }
     let data_cnt = if all_data_count > setting.max_data_num {
         setting.max_data_num
     } else {
@@ -571,8 +574,9 @@ fn count_data_num(path: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Calculator, fit, load_dataset};
+    use crate::{Calculator, DataLoadSetting, fit, load_dataset};
     use rand::{RngExt, rng};
+    use std::cmp::max;
 
     #[test]
     fn it_works() {
@@ -587,12 +591,14 @@ mod tests {
             .write_record(["y", "x0", "x1", "x2", "x3", "x4", "x5"])
             .unwrap();
 
-        for _i in 0..DATA_NUM {
+        let mut example_target = 0.0;
+        let mut example_params = vec![];
+        for i in 0..DATA_NUM {
             let x0 = rng().random_range(1000.0..10000.0);
             let x1 = rng().random_range(5000.0..50000.0);
-            let x2: f64 = rng().random_range(0.01..0.15);
-            let x3: f64 = rng().random_range(-62.0..62.0);
-            let x4: f64 = rng().random_range(1000.0..80001000.0);
+            let x2 = rng().random_range(0.01..0.15);
+            let x3 = rng().random_range(-62.0..62.0);
+            let x4 = rng().random_range(1000.0..80001000.0);
             let x5 = rng().random_range(0.0..50.0);
             let noise = rng().random_range(-0.50..0.50) * 1000.0;
 
@@ -608,13 +614,63 @@ mod tests {
                     x5.to_string(),
                 ])
                 .unwrap();
+            if i == 0 {
+                example_target = y;
+                example_params = vec![x0, x1, x2, x3, x4, x5];
+            }
         }
         writer.flush().unwrap();
 
         let mut reader_builder = csv::ReaderBuilder::new();
         reader_builder.delimiter(b'\t');
-        let (dataset, data_info) = load_dataset(SAMPLE_FILE, reader_builder, None).unwrap();
+        let mut setting = DataLoadSetting::default();
+        setting.normalize = true;
+        let (dataset, data_info) =
+            load_dataset(SAMPLE_FILE, reader_builder, Some(setting)).unwrap();
 
+        assert!(
+            dbg!(dataset.vec[0].target - data_info.normalize_target(example_target)).abs() < 0.05
+        );
+        assert!(
+            dbg!(
+                (data_info.restore_target(dataset.vec[0].target) - example_target)
+                    / data_info.target_max
+            )
+            .abs()
+                < 0.05
+        );
+
+        data_info
+            .normalize_params(&example_params)
+            .iter()
+            .zip(dataset.vec[0].params.clone())
+            .for_each(|p| {
+                let restored_param = p.0;
+                let example_param = p.1;
+                assert!(dbg!(restored_param - example_param).abs() < 0.01);
+            });
+        data_info
+            .restore_params(&dataset.vec[0].params)
+            .iter()
+            .enumerate()
+            .zip(example_params.clone())
+            .for_each(|p| {
+                let idx = p.0.0;
+                let restored_param = p.0.1;
+                let example_param = p.1;
+                assert!(
+                    dbg!(
+                        (restored_param - example_param)
+                            / (data_info.max_list[idx].abs() + data_info.min_list[idx])
+                    )
+                    .abs()
+                        < 0.01
+                );
+            });
+
+        let mut reader_builder = csv::ReaderBuilder::new();
+        reader_builder.delimiter(b'\t');
+        let (dataset, data_info) = load_dataset(SAMPLE_FILE, reader_builder, None).unwrap();
         let result = fit(&dataset, &data_info, None);
 
         let output_file = "result.tsv";
