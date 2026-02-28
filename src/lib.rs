@@ -80,6 +80,10 @@ pub fn fit(
     original_data_info: &OriginalDataInfo,
     genetic_setting: Option<AlgorithmSetting>,
 ) -> Result<String, String> {
+    if dataset.data_cnt() < 1000 {
+        return Err(format!("data count is too small(<1000): {}, no result", dataset.data_cnt()));
+    }
+
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
 
     let non_negative_list = original_data_info
@@ -450,20 +454,11 @@ pub fn load_dataset(
     let mut min_list = vec![f64::INFINITY; param_cnt];
     let mut max_list = vec![f64::NEG_INFINITY; param_cnt];
     let all_data_count = count_data_num(input_file);
-    if all_data_count < 1000 {
-        return Err(format!(
-            "data count is too small: {}, no result",
-            all_data_count
-        ));
-    }
     let data_cnt = if all_data_count > setting.max_data_num {
         setting.max_data_num
     } else {
         all_data_count
     };
-    if data_cnt < 1000 {
-        eprintln!("data count is too small: {}, no result", data_cnt);
-    }
 
     let mut target_min = f64::INFINITY;
     let mut target_max = f64::NEG_INFINITY;
