@@ -81,7 +81,10 @@ pub fn fit(
     genetic_setting: Option<AlgorithmSetting>,
 ) -> Result<String, String> {
     if dataset.data_cnt() < 1000 {
-        return Err(format!("data count is too small(<1000): {}, no result", dataset.data_cnt()));
+        return Err(format!(
+            "data count is too small(<1000): {}, no result",
+            dataset.data_cnt()
+        ));
     }
 
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
@@ -267,7 +270,7 @@ fn calc_evaluation(
 
     let mut x_matrix: Vec<Vec<f64>> = Vec::with_capacity(dataset.data_cnt());
     let mut target_list: Vec<f64> = Vec::with_capacity(dataset.data_cnt());
-    for data_item in dataset.iter() {
+    for data_item in dataset.vec() {
         target_list.push(data_item.target);
         let mut vec = vec![];
         for (idx, gene) in individual.gene_list().iter().enumerate() {
@@ -363,7 +366,24 @@ impl OriginalDataInfo {
         self.param_names.len()
     }
     pub fn restore_target(&self, normalized_target: f64) -> f64 {
-        normalized_target * (self.target_max - self.target_min) + self.target_min
+        self.target_min + normalized_target * (self.target_max - self.target_min)
+    }
+    pub fn restore_params(&self, normalized_params: Vec<f64>) -> Vec<f64> {
+        let mut vec = Vec::with_capacity(self.param_cnt());
+        for (idx, param) in normalized_params.iter().enumerate() {
+            vec.push(self.min_list[idx] + param * (self.max_list[idx] - self.min_list[idx]))
+        }
+        vec
+    }
+    pub fn normalize_target(&self, target: f64) -> f64 {
+        (target - self.target_min) / (self.target_max - self.target_min)
+    }
+    pub fn normalize_params(&self, params: Vec<f64>) -> Vec<f64> {
+        let mut vec = Vec::with_capacity(self.param_cnt());
+        for (idx, param) in params.iter().enumerate() {
+            vec.push((param - self.min_list[idx]) / (self.max_list[idx] - self.min_list[idx]))
+        }
+        vec
     }
 }
 
@@ -388,8 +408,8 @@ impl PlainDataset {
             PlainDataset { vec: test.to_vec() },
         )
     }
-    pub fn iter(&self) -> Iter<'_, PlainDataItem> {
-        self.vec.iter()
+    pub fn vec(&self) -> &Vec<PlainDataItem> {
+        &self.vec
     }
 
     pub fn to_ndarray(&self, data_info: &OriginalDataInfo) -> (ndarray::Array2<f64>, Array1<f64>) {
