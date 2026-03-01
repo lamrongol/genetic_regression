@@ -33,6 +33,7 @@ pub struct AlgorithmSetting {
     pub min_loop_cnt: usize,
     pub max_loop_cnt: usize,
     pub stop_diff_rate: f64,
+    pub alternate_way: bool,
 }
 
 impl AlgorithmSetting {
@@ -43,8 +44,9 @@ impl AlgorithmSetting {
             top_selection_num: 5,
             mutation_rate: 0.30,
             min_loop_cnt: 3,
-            max_loop_cnt: 30,
+            max_loop_cnt: 50,
             stop_diff_rate: 0.000001,
+            alternate_way: true,
         }
     }
 }
@@ -87,6 +89,21 @@ pub fn fit(
     }
 
     let setting = genetic_setting.unwrap_or_else(|| AlgorithmSetting::default());
+    let (dataset_odd, dataset_even) = if setting.alternate_way {
+        let mut vec = dataset.vec.clone();
+        vec.shuffle(&mut rand::rng());
+        let (vec_odd, vec_even) = vec.split_at(dataset.data_cnt() / 2);
+        (
+            &PlainDataset {
+                vec: vec_odd.to_vec(),
+            },
+            &PlainDataset {
+                vec: vec_even.to_vec(),
+            },
+        )
+    } else {
+        (dataset, dataset)
+    };
 
     let non_negative_list = original_data_info
         .min_list
@@ -135,6 +152,16 @@ pub fn fit(
     loop {
         generation_idx += 1;
         dbg!(generation_idx);
+
+        let use_dataset = if setting.alternate_way {
+            if generation_idx / 2 == 1 {
+                dataset_odd
+            } else {
+                dataset_even
+            }
+        } else {
+            &dataset
+        };
 
         let mut next_individuals: Vec<Individual> = vec![];
         //Select top and mating
@@ -186,7 +213,7 @@ pub fn fit(
 
         individuals = next_individuals;
         individuals.par_iter_mut().for_each(|mut individual| {
-            let result = calc_evaluation(&mut individual, &dataset, &original_data_info);
+            let result = calc_evaluation(&mut individual, &use_dataset, &original_data_info);
             if result.is_ok() {
                 *individual = result.unwrap();
             }
@@ -231,7 +258,7 @@ pub fn fit(
             };
             dbg!(improvement_rate);
             // if loop_count > MIN_LOOP_COUNT && diff_rate < STOP_DIFF_RATE {
-            if improvement_rate < setting.stop_diff_rate {
+            if improvement_rate.abs() < setting.stop_diff_rate {
                 break;
             }
         }
@@ -576,7 +603,6 @@ fn count_data_num(path: &str) -> usize {
 mod tests {
     use crate::{Calculator, DataLoadSetting, fit, load_dataset};
     use rand::{RngExt, rng};
-    use std::cmp::max;
 
     #[test]
     fn it_works() {

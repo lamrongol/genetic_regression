@@ -1,4 +1,5 @@
 use crate::gene::Gene;
+use crate::gene::Gene::Unused;
 use rand::{RngExt, rng};
 use std::str::FromStr;
 
@@ -40,7 +41,7 @@ impl Individual {
                 child2.gene_list[i] = self.gene_list[i].clone() //if (isPlus == null || isPlus(i) || GeneManager.allowMinus(this.genes(i)))
             } else {
                 let gene = &child1.gene_list[i];
-                if gene.dim() == 2 && gene.name().starts_with("Exp") {
+                if gene.dim() == 2 {
                     changed = true;
                     let (gene1, gene2) = gene.cross_different_scale(child2.gene_list[i].clone());
 
@@ -107,7 +108,7 @@ impl Individual {
 
             for i in 0..self.gene_num {
                 let gene = &self.gene_list[i];
-                let line = if gene.dim() == 0 {
+                let line = if gene == &Unused {
                     format!("\t{}", gene.to_string())
                 } else {
                     format!("{}\t{}", coe_list[i].unwrap(), gene.to_string())
@@ -153,7 +154,7 @@ impl Individual {
                 Err(_) => None,
             };
             coe_list.push(coe);
-            let scale: Option<f64> = if Gene::from_str(&line[2]).unwrap().dim() == 2 {
+            let scale: Option<f64> = if Gene::from_str(&line[2]).unwrap().has_scale() {
                 Some(line[3].parse::<f64>().unwrap())
             } else {
                 None

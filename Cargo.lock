@@ -121,7 +121,7 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "genetic_regression"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "csv",
  "ndarray",

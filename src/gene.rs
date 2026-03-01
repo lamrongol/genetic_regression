@@ -1,4 +1,6 @@
+use crate::gene::Gene::Unused;
 use rand::{RngExt, rng};
+use std::cmp::PartialEq;
 use std::str::FromStr;
 use strum::EnumCount;
 use strum_macros::{EnumCount, EnumString, FromRepr, IntoStaticStr};
@@ -20,6 +22,7 @@ pub(crate) enum Gene {
     Inverse1plus(f64),
     Log1plus(f64),
 }
+
 impl Gene {
     pub(crate) fn name(&self) -> String {
         let name: &str = self.into();
@@ -33,11 +36,25 @@ impl Gene {
             Gene::Cubed => 1,
             Gene::Exp(_s) => 2,
             Gene::ExpMinus(_s) => 2,
-            Gene::Inverse1plus(_s) => 2,
+            Gene::Inverse1plus(_s) => 1, //Is this better? if *s==1.0 {1} else{ 2},
             Gene::Sqrt => 1,
-            Gene::Log1plus(_s) => 2,
+            Gene::Log1plus(_s) => 1, //Is this better? if *s==1.0 {1} else{ 2},
         }
     }
+    pub(crate) fn has_scale(&self) -> bool {
+        match self {
+            Gene::Unused => false,
+            Gene::Linear => false,
+            Gene::Squared => false,
+            Gene::Cubed => false,
+            Gene::Exp(_s) => true,
+            Gene::ExpMinus(_s) => true,
+            Gene::Inverse1plus(_s) => true,
+            Gene::Sqrt => false,
+            Gene::Log1plus(_s) => true,
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn accept_only_non_negative(&self) -> bool {
         match self {
@@ -84,9 +101,7 @@ impl Gene {
     // }
 
     pub(crate) fn get_scale_factor(&self) -> Option<f64> {
-        if self.dim() < 2 {
-            None
-        } else {
+        if self.has_scale() {
             match self {
                 Gene::Exp(scale_factor)
                 | Gene::ExpMinus(scale_factor)
@@ -96,14 +111,16 @@ impl Gene {
                     panic!("Code for {} is not written", self.name());
                 }
             }
+        } else {
+            None
         }
     }
 
     pub(crate) fn to_string(&self) -> String {
-        match self.dim() {
-            0 => self.name(),
-            1 => format!("{}\t", self.name()),
-            2 => match self {
+        if self == &Unused {
+            self.name()
+        } else if self.has_scale() {
+            match self {
                 Gene::Exp(scale_factor)
                 | Gene::ExpMinus(scale_factor)
                 | Gene::Log1plus(scale_factor)
@@ -113,8 +130,9 @@ impl Gene {
                 _ => {
                     panic!("Code for {} is not written", self.name());
                 }
-            },
-            _ => panic!("Code for {} is not written", self.name()),
+            }
+        } else {
+            format!("{}\t", self.name())
         }
     }
 
@@ -125,7 +143,7 @@ impl Gene {
             ACCEPT_MINUS_GENE_CNT
         };
         let gene = Gene::from_repr(rng().random_range(0..minus_idx)).unwrap();
-        if gene.dim() == 2 {
+        if gene.has_scale() {
             if scale_factor < 1.0 {
                 match gene {
                     Gene::Log1plus(_s) => return Gene::Log1plus(1.0),
