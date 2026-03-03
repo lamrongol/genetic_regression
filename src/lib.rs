@@ -418,9 +418,19 @@ impl PlainDataset {
         self.vec.len()
     }
 
-    pub fn split(&mut self, train_rate: f64, test_size: usize) -> (Self, Self, Self) {
+    pub fn split(
+        &mut self,
+        train_rate: f64,
+        test_size: usize,
+        randomize: bool,
+    ) -> (Self, Self, Self) {
         let data_cnt = self.data_cnt();
-        let (test, left) = self.vec.split_at(min(test_size, data_cnt));//TODO
+        let test_size = min(test_size, data_cnt); //TODO?
+        let (test, left) = if randomize {
+            self.vec.partial_shuffle(&mut rand::rng(), test_size)
+        } else {
+            self.vec.split_at_mut(test_size)
+        };
         let (train, validation) = left.split_at(((left.len() as f64) * train_rate) as usize);
         (
             PlainDataset {
