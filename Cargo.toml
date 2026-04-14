@@ -13,6 +13,6 @@ strum = "0.28.0"
 strum_macros = "0.28.0"
 csv = "1.4.0"
 rayon = "1.11.0"
-rand = "0.10.0"
+rand = "0.10.1"
 ndarray = "0.17.2"
 serde = { version = "1.0.228", features = ["derive"] }
