@@ -3,12 +3,12 @@ use rand::{RngExt, rng};
 use std::cmp::PartialEq;
 use std::str::FromStr;
 use strum::EnumCount;
-use strum_macros::{EnumCount, EnumString, FromRepr, IntoStaticStr};
+use strum_macros::{EnumCount as EnumCountMacro, EnumString, FromRepr, IntoStaticStr};
 
 //Developers must think to change this when changing Gene enum.
 const ACCEPT_MINUS_GENE_CNT: usize = 6;
 
-#[derive(FromRepr, Debug, PartialEq, EnumCount, EnumString, IntoStaticStr)]
+#[derive(FromRepr, Debug, PartialEq, EnumCountMacro, EnumString, IntoStaticStr)]
 pub(crate) enum Gene {
     Unused,
     Linear,
